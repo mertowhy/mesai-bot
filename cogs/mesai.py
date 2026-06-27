@@ -79,8 +79,19 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
 
         current_time = int(time.time())
 
-        # Helper to find 「👮」mesai channel
+        # Helper to find mesai channel (prioritizes ID, falls back to name)
         def get_mesai_channel(guild):
+            # 1. Try to find by configured channel ID
+            log_channel_id = os.getenv("MESAI_LOG_CHANNEL_ID")
+            if log_channel_id:
+                try:
+                    channel = guild.get_channel(int(log_channel_id))
+                    if channel:
+                        return channel
+                except ValueError:
+                    pass
+
+            # 2. Fallback to name search
             channel = discord.utils.get(guild.text_channels, name="「👮」mesai")
             if not channel:
                 for tc in guild.text_channels:
