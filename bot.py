@@ -100,6 +100,16 @@ class SAHPBot(commands.Bot):
     async def on_ready(self):
         logger.info(f"Bot connected successfully as {self.user} (ID: {self.user.id})")
         
+        # Log loaded configurations for troubleshooting
+        logger.info("--- Sunucu Yapılandırma Bilgileri ---")
+        logger.info(f"AKTIF_MESAI_CHANNEL_ID: {os.getenv('AKTIF_MESAI_CHANNEL_ID')}")
+        logger.info(f"MESAI_LOG_CHANNEL_ID: {os.getenv('MESAI_LOG_CHANNEL_ID')}")
+        logger.info(f"MAZERET_CHANNEL_ID: {os.getenv('MAZERET_CHANNEL_ID')}")
+        logger.info(f"GELEN_MAZERET_CHANNEL_ID: {os.getenv('GELEN_MAZERET_CHANNEL_ID')}")
+        logger.info(f"GUILD_ID: {os.getenv('GUILD_ID')}")
+        logger.info(f"LOG_LEVEL: {os.getenv('LOG_LEVEL')}")
+        logger.info("-------------------------------------")
+        
         # 1. Clear active sessions that were left open due to bot crash/restart
         current_time = int(time.time())
         self.db.clear_active_sessions(current_time)
