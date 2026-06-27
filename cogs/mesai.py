@@ -80,16 +80,21 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
         current_time = int(time.time())
 
         # Helper to find mesai channel (prioritizes ID, falls back to name)
-        def get_mesai_channel(guild):
+        async def get_mesai_channel(guild):
             # 1. Try to find by configured channel ID
             log_channel_id = os.getenv("MESAI_LOG_CHANNEL_ID")
             if log_channel_id:
                 try:
+                    # Check local cache first
                     channel = guild.get_channel(int(log_channel_id))
                     if channel:
                         return channel
-                except ValueError:
-                    pass
+                    # Fallback to API fetch (forces Discord to return the channel)
+                    channel = await self.bot.fetch_channel(int(log_channel_id))
+                    if channel:
+                        return channel
+                except Exception as e:
+                    logger.warning(f"Could not resolve channel by ID {log_channel_id}: {e}")
 
             # 2. Fallback to name search
             channel = discord.utils.get(guild.text_channels, name="「👮」mesai")
@@ -105,7 +110,7 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             
             # Send entry warning message
             try:
-                mesai_channel = get_mesai_channel(member.guild)
+                mesai_channel = await get_mesai_channel(member.guild)
                 warning_message = f"🚨 {member.mention} **Mesaiye girdin!** Unutma, mesaide olmadığın takdirde bu ses kanalında bulunman ceza almana yol açabilir."
                 
                 if mesai_channel:
@@ -127,7 +132,7 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             try:
                 if duration > 5:  # Only post if they spent more than 5 seconds
                     view = MesaiSummaryView(member.id, duration, weekly_seconds, total_seconds)
-                    mesai_channel = get_mesai_channel(member.guild)
+                    mesai_channel = await get_mesai_channel(member.guild)
                     
                     exit_message = f"👋 {member.mention} **mesaiden ayrıldı.** Özetini görmek için tıkla:"
                     
