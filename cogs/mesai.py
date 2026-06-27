@@ -118,19 +118,19 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
                     view = MesaiSummaryView(member.id, duration, weekly_seconds, total_seconds)
                     mesai_channel = get_mesai_channel(member.guild)
                     
-                    exit_message = f"👋 {member.mention} aktif mesai ses kanalından ayrıldı. Mesai özetini sadece kendisi görecek şekilde aşağıdaki butona tıklayarak görüntüleyebilir."
+                    exit_message = f"👋 {member.mention} **mesaiden ayrıldı.** Özetini görmek için tıkla:"
                     
                     if mesai_channel:
                         await mesai_channel.send(
                             content=exit_message, 
                             view=view, 
-                            delete_after=1800  # Automatically delete message after 30 minutes
+                            delete_after=120  # Automatically delete message after 120 seconds
                         )
                     else:
                         await before.channel.send(
                             content=exit_message, 
                             view=view, 
-                            delete_after=1800
+                            delete_after=120
                         )
             except Exception as e:
                 logger.error(f"Failed to send session feedback button to channel: {e}")
