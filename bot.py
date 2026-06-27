@@ -1,0 +1,112 @@
+import discord
+from discord.ext import commands
+from dotenv import load_dotenv
+import os
+import sys
+import time
+import logging
+from database import Database
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('bot.log', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger("sahp_bot")
+
+# Load environment variables
+load_dotenv()
+
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+GUILD_ID = os.getenv("GUILD_ID") # Optional for fast command syncing
+
+if not DISCORD_TOKEN or DISCORD_TOKEN == "your_discord_bot_token_here":
+    logger.critical("DISCORD_TOKEN is missing or not configured in .env file.")
+    sys.exit(1)
+
+class SAHPBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True
+        intents.guilds = True
+        intents.voice_states = True
+        
+        super().__init__(
+            command_prefix="!",
+            intents=intents,
+            help_command=None
+        )
+        # Initialize database
+        self.db = Database(os.getenv("MONGO_URI"))
+
+    async def setup_hook(self):
+        # Load extensions
+        cogs = ["cogs.mesai", "cogs.mazeret"]
+        for cog in cogs:
+            try:
+                await self.load_extension(cog)
+                logger.info(f"Extension {cog} loaded successfully.")
+            except Exception as e:
+                logger.error(f"Failed to load extension {cog}: {e}")
+
+        # Command syncing
+        if GUILD_ID:
+            # Sync to test/server guild immediately
+            guild = discord.Object(id=int(GUILD_ID))
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            logger.info(f"Slash commands synced to guild {GUILD_ID}.")
+        else:
+            # Sync globally (takes up to 1 hour to propagate)
+            await self.tree.sync()
+            logger.info("Slash commands synced globally.")
+
+    async def on_ready(self):
+        logger.info(f"Bot connected successfully as {self.user} (ID: {self.user.id})")
+        
+        # 1. Clear active sessions that were left open due to bot crash/restart
+        current_time = int(time.time())
+        self.db.clear_active_sessions(current_time)
+        
+        # 2. Check current voice channel state and start sessions for members in the channel
+        aktif_mesai_id = os.getenv("AKTIF_MESAI_CHANNEL_ID")
+        if aktif_mesai_id:
+            try:
+                channel_id = int(aktif_mesai_id)
+                channel = self.get_channel(channel_id)
+                if channel and isinstance(channel, discord.VoiceChannel):
+                    for member in channel.members:
+                        if not member.bot:
+                            self.db.start_session(str(member.id), member.display_name, current_time)
+                    logger.info(f"Scanned voice channel {channel.name}. Active sessions started.")
+            except ValueError:
+                logger.error("AKTIF_MESAI_CHANNEL_ID in .env is not a valid number.")
+            except Exception as e:
+                logger.error(f"Error during voice channel scan on startup: {e}")
+
+    async def close(self):
+        logger.info("Shutting down bot. Closing database...")
+        self.db.close()
+        await super().close()
+
+# Prefix command for manual syncing by owner
+bot = SAHPBot()
+
+@bot.command(name="sync")
+@commands.is_owner()
+async def manual_sync(ctx):
+    await bot.tree.sync()
+    await ctx.send("Slash commands have been synced globally!")
+
+if __name__ == "__main__":
+    try:
+        bot.run(DISCORD_TOKEN)
+    except discord.LoginFailure:
+        logger.critical("Invalid Discord Token provided. Please check your .env configuration.")
+    except Exception as e:
+        logger.critical(f"Bot crashed during run: {e}")

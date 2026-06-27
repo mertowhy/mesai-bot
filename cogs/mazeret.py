@@ -1,0 +1,250 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+import os
+import logging
+
+logger = logging.getLogger("sahp_bot")
+
+class MazeretReviewView(discord.ui.View):
+    def __init__(self):
+        # We set timeout=None to make this view persistent as well
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Onayla", style=discord.ButtonStyle.success, emoji="✅", custom_id="mazeret_approve")
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Allow administrators or members with '.' role to review
+        has_permission = interaction.user.guild_permissions.administrator
+        if not has_permission:
+            # Check for role named '.'
+            for role in interaction.user.roles:
+                if role.name == ".":
+                    has_permission = True
+                    break
+
+        if not has_permission:
+            await interaction.response.send_message("❌ Bu işlemi gerçekleştirmek için yetkiniz bulunmamaktadır.", ephemeral=True)
+            return
+
+        embed = interaction.message.embeds[0]
+        # Change color to green and append approval info
+        embed.color = discord.Color.green()
+        
+        # Check if status field already exists to prevent duplicate updates
+        status_field_exists = False
+        for i, field in enumerate(embed.fields):
+            if field.name == "Durum":
+                status_field_exists = True
+                embed.set_field_at(i, name="Durum", value=f"✅ Onaylandı (Onaylayan: {interaction.user.mention})", inline=False)
+                break
+        
+        if not status_field_exists:
+            embed.add_field(name="Durum", value=f"✅ Onaylandı (Onaylayan: {interaction.user.mention})", inline=False)
+
+        # Disable buttons
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.response.edit_message(embed=embed, view=self)
+        
+        # Optionally, notify the member in DMs
+        try:
+            member_id = None
+            for field in embed.fields:
+                if field.name == "Memur":
+                    # Extract ID from mention e.g., <@123456> -> 123456
+                    clean_mention = field.value.split(" ")[0]
+                    member_id = int(clean_mention.replace("<@", "").replace(">", ""))
+                    break
+            if member_id:
+                member = interaction.guild.get_member(member_id)
+                if member:
+                    dm_embed = discord.Embed(
+                        title="Mazeret Talebi Güncellemesi",
+                        description=f"Gönderdiğiniz mazeret talebi onaylanmıştır.\n\n**Onaylayan:** {interaction.user.display_name}",
+                        color=discord.Color.green()
+                    )
+                    dm_embed.set_footer(text="San Andreas Highway Patrol")
+                    await member.send(embed=dm_embed)
+        except Exception as e:
+            logger.warning(f"Could not send approval DM: {e}")
+
+    @discord.ui.button(label="Reddet", style=discord.ButtonStyle.danger, emoji="❌", custom_id="mazeret_reject")
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Allow administrators or members with '.' role to review
+        has_permission = interaction.user.guild_permissions.administrator
+        if not has_permission:
+            # Check for role named '.'
+            for role in interaction.user.roles:
+                if role.name == ".":
+                    has_permission = True
+                    break
+
+        if not has_permission:
+            await interaction.response.send_message("❌ Bu işlemi gerçekleştirmek için yetkiniz bulunmamaktadır.", ephemeral=True)
+            return
+
+        embed = interaction.message.embeds[0]
+        # Change color to red and append rejection info
+        embed.color = discord.Color.red()
+        
+        # Check if status field already exists
+        status_field_exists = False
+        for i, field in enumerate(embed.fields):
+            if field.name == "Durum":
+                status_field_exists = True
+                embed.set_field_at(i, name="Durum", value=f"❌ Reddedildi (Reddeden: {interaction.user.mention})", inline=False)
+                break
+        
+        if not status_field_exists:
+            embed.add_field(name="Durum", value=f"❌ Reddedildi (Reddeden: {interaction.user.mention})", inline=False)
+
+        # Disable buttons
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.response.edit_message(embed=embed, view=self)
+        
+        # Optionally, notify the member in DMs
+        try:
+            member_id = None
+            for field in embed.fields:
+                if field.name == "Memur":
+                    # Extract ID
+                    clean_mention = field.value.split(" ")[0]
+                    member_id = int(clean_mention.replace("<@", "").replace(">", ""))
+                    break
+            if member_id:
+                member = interaction.guild.get_member(member_id)
+                if member:
+                    dm_embed = discord.Embed(
+                        title="Mazeret Talebi Güncellemesi",
+                        description=f"Gönderdiğiniz mazeret talebi reddedilmiştir.\n\n**Reddeden:** {interaction.user.display_name}",
+                        color=discord.Color.red()
+                    )
+                    dm_embed.set_footer(text="San Andreas Highway Patrol")
+                    await member.send(embed=dm_embed)
+        except Exception as e:
+            logger.warning(f"Could not send rejection DM: {e}")
+
+class MazeretModal(discord.ui.Modal):
+    def __init__(self, bot):
+        super().__init__(title="SAHP Mazeret Bildirim Formu")
+        self.bot = bot
+
+        self.isim_rozet = discord.ui.TextInput(
+            label="Ad Soyad ve Rozet Numarası",
+            placeholder="Örn: John Doe - 105",
+            required=True,
+            max_length=50
+        )
+        self.tarih = discord.ui.TextInput(
+            label="Mazeret Süresi (Tarihler)",
+            placeholder="Örn: 27.06.2026 - 30.06.2026",
+            required=True,
+            max_length=100
+        )
+        self.neden = discord.ui.TextInput(
+            label="Mazeret Sebebi",
+            style=discord.TextStyle.long,
+            placeholder="Mazeretinizin gerekçesini açıklayın...",
+            required=True,
+            max_length=1000
+        )
+
+        self.add_item(self.isim_rozet)
+        self.add_item(self.tarih)
+        self.add_item(self.neden)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        gelen_mazeret_id = int(os.getenv("GELEN_MAZERET_CHANNEL_ID", 0))
+        channel = interaction.guild.get_channel(gelen_mazeret_id)
+
+        if not channel:
+            await interaction.response.send_message(
+                "❌ Gelen mazeret kanalı bulunamadı. Lütfen bot yöneticisi ile iletişime geçin.", 
+                ephemeral=True
+            )
+            return
+
+        # Prepare review embed
+        embed = discord.Embed(
+            title="📝 Yeni Mazeret Bildirimi",
+            color=discord.Color.orange(),
+            timestamp=interaction.created_at
+        )
+        embed.add_field(name="Memur", value=f"{interaction.user.mention} ({interaction.user.id})", inline=True)
+        embed.add_field(name="Ad Soyad / Rozet", value=self.isim_rozet.value, inline=True)
+        embed.add_field(name="Mazeret Süresi", value=self.tarih.value, inline=False)
+        embed.add_field(name="Mazeret Sebebi", value=self.neden.value, inline=False)
+        embed.set_footer(text="San Andreas Highway Patrol Mazeret Sistemi")
+        if interaction.user.display_avatar:
+            embed.set_thumbnail(url=interaction.user.display_avatar.url)
+
+        # Send to gelen-mazeret with the review buttons view
+        view = MazeretReviewView()
+        await channel.send(embed=embed, view=view)
+
+        await interaction.response.send_message(
+            "✅ Mazeret talebiniz başarıyla iletildi. Yetkililer inceledikten sonra bilgilendirileceksiniz.", 
+            ephemeral=True
+        )
+
+class MazeretView(discord.ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(
+        label="Mazeret Bildir", 
+        style=discord.ButtonStyle.danger, 
+        emoji="📝", 
+        custom_id="mazeret_submit_button"
+    )
+    async def mazeret_bildir(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(MazeretModal(self.bot))
+
+class MazeretCog(commands.Cog, name="Mazeret İşlemleri"):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @app_commands.command(name="mazeret-kur", description="Mazeret bildirme butonunun yer aldığı embed mesajı kurar.")
+    @app_commands.default_permissions(manage_guild=True)
+    async def mazeret_kur(self, interaction: discord.Interaction):
+        mazeret_channel_id = int(os.getenv("MAZERET_CHANNEL_ID", 0))
+        channel = interaction.guild.get_channel(mazeret_channel_id)
+
+        if not channel:
+            await interaction.response.send_message(
+                f"❌ `.env` dosyasında yapılandırılan `#mazeret` kanalı (ID: {mazeret_channel_id}) sunucuda bulunamadı.", 
+                ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title="🚔 SAHP Mazeret Bildirim Sistemi",
+            description=(
+                "Toplantılara katılamayacağınız, aktif devriye atamayacağınız veya "
+                "belirli tarihler arasında mesaiye katılım sağlayamayacağınız durumlarda "
+                "aşağıdaki **Mazeret Bildir** butonuna tıklayarak mazeretinizi iletebilirsiniz.\n\n"
+                "⚠️ *Mazeretinizin geçerli sayılması için detaylı açıklama yazılması zorunludur.*"
+            ),
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text="San Andreas Highway Patrol • Command Staff")
+        
+        # Send view
+        view = MazeretView(self.bot)
+        await channel.send(embed=embed, view=view)
+        
+        await interaction.response.send_message(
+            f"✅ Mazeret bildirim paneli {channel.mention} kanalına başarıyla kuruldu.", 
+            ephemeral=True
+        )
+
+async def setup(bot):
+    cog = MazeretCog(bot)
+    await bot.add_cog(cog)
+    # Register the persistent views in the bot
+    bot.add_view(MazeretView(bot))
+    bot.add_view(MazeretReviewView())
