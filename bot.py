@@ -120,6 +120,9 @@ class SAHPBot(commands.Bot):
             try:
                 channel_id = int(aktif_mesai_id)
                 channel = self.get_channel(channel_id)
+                if not channel:
+                    channel = await self.fetch_channel(channel_id)
+                
                 if channel and isinstance(channel, discord.VoiceChannel):
                     for member in channel.members:
                         if not member.bot:
