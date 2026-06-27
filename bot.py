@@ -7,9 +7,15 @@ import time
 import logging
 from database import Database
 
+# Load environment variables
+load_dotenv()
+
 # Configure Logging
+log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -17,9 +23,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("sahp_bot")
-
-# Load environment variables
-load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID") # Optional for fast command syncing
