@@ -110,6 +110,14 @@ class SAHPBot(commands.Bot):
         logger.info(f"LOG_LEVEL: {os.getenv('LOG_LEVEL')}")
         logger.info("-------------------------------------")
         
+        # Debug: Print all guilds and channels the bot can see
+        logger.info("--- Botun Erişebildiği Sunucu ve Kanallar ---")
+        for guild in self.guilds:
+            logger.info(f"Sunucu: {guild.name} (ID: {guild.id})")
+            for channel in guild.channels:
+                logger.info(f" - Kanal: {channel.name} (ID: {channel.id}, Tip: {channel.type})")
+        logger.info("---------------------------------------------")
+        
         # 1. Clear active sessions that were left open due to bot crash/restart
         current_time = int(time.time())
         self.db.clear_active_sessions(current_time)
