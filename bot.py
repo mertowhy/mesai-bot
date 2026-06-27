@@ -55,16 +55,22 @@ class SAHPBot(commands.Bot):
                 logger.error(f"Failed to load extension {cog}: {e}")
 
         # Command syncing
-        if GUILD_ID:
-            # Sync to test/server guild immediately
-            guild = discord.Object(id=int(GUILD_ID))
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            logger.info(f"Slash commands synced to guild {GUILD_ID}.")
-        else:
-            # Sync globally (takes up to 1 hour to propagate)
-            await self.tree.sync()
-            logger.info("Slash commands synced globally.")
+        try:
+            if GUILD_ID:
+                # Sync to test/server guild immediately
+                guild = discord.Object(id=int(GUILD_ID))
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                logger.info(f"Slash commands synced to guild {GUILD_ID}.")
+            else:
+                # Sync globally (takes up to 1 hour to propagate)
+                await self.tree.sync()
+                logger.info("Slash commands synced globally.")
+        except discord.Forbidden as e:
+            logger.error(f"Failed to sync slash commands due to permission issues (Missing Access): {e}")
+            logger.warning("Make sure the bot is invited with 'applications.commands' scope, and GUILD_ID in your env is correct and belongs to a server the bot is in.")
+        except Exception as e:
+            logger.error(f"Failed to sync slash commands: {e}")
 
     async def on_ready(self):
         logger.info(f"Bot connected successfully as {self.user} (ID: {self.user.id})")
