@@ -20,6 +20,41 @@ def format_duration(seconds: int) -> str:
         parts.append(f"{secs} saniye")
     return " ".join(parts)
 
+class MesaiSummaryView(discord.ui.View):
+    def __init__(self, target_member_id: int, session_duration: int, weekly_seconds: int, total_seconds: int):
+        super().__init__(timeout=1800) # 30 minutes timeout
+        self.target_member_id = target_member_id
+        self.session_duration = session_duration
+        self.weekly_seconds = weekly_seconds
+        self.total_seconds = total_seconds
+
+    @discord.ui.button(label="Mesai Özetini Gör", style=discord.ButtonStyle.primary, emoji="📋")
+    async def view_summary(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.target_member_id:
+            await interaction.response.send_message(
+                f"❌ Bu özet başka bir memura aittir. Kendi mesai bilgilerinizi sorgulamak için `/mesai` komutunu kullanabilirsiniz.", 
+                ephemeral=True
+            )
+            return
+            
+        formatted_session = format_duration(self.session_duration)
+        formatted_weekly = format_duration(self.weekly_seconds)
+        formatted_total = format_duration(self.total_seconds)
+        
+        embed = discord.Embed(
+            title="🚨 SAHP Mesaiden Çıkış Raporu",
+            description=f"Merhaba {interaction.user.mention}, **Aktif Mesai** ses kanalındaki oturumunuz sonlandırıldı. Mesai bilgileriniz aşağıda yer almaktadır:",
+            color=discord.Color.red(),
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="⏱️ Mesaide Kaldığın Süre", value=f"`{formatted_session}`", inline=False)
+        embed.add_field(name="📅 Son 7 Günde Yaptığın Mesai", value=f"`{formatted_weekly}`", inline=False)
+        embed.add_field(name="🏆 Toplam Mesai Süren", value=f"`{formatted_total}`", inline=False)
+        embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
+        embed.set_footer(text="San Andreas Highway Patrol • Command Staff")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 class MesaiCog(commands.Cog, name="Mesai Takip"):
     def __init__(self, bot):
         self.bot = bot
@@ -44,20 +79,27 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
 
         current_time = int(time.time())
 
+        # Helper to find 「👮」mesai channel
+        def get_mesai_channel(guild):
+            channel = discord.utils.get(guild.text_channels, name="「👮」mesai")
+            if not channel:
+                for tc in guild.text_channels:
+                    if "mesai" in tc.name.lower():
+                        return tc
+            return channel
+
         if joined:
             self.bot.db.start_session(str(member.id), member.display_name, current_time)
             logger.info(f"{member.display_name} ({member.id}) entered Aktif Mesai channel.")
             
             # Send entry warning message
             try:
-                # Find a text channel named "mesai" (case-insensitive)
-                mesai_channel = discord.utils.get(member.guild.text_channels, name="mesai")
+                mesai_channel = get_mesai_channel(member.guild)
                 warning_message = f"🚨 {member.mention} **Mesaiye girdin!** Unutma, mesaide olmadığın takdirde bu ses kanalında bulunman ceza almana yol açabilir."
                 
                 if mesai_channel:
                     await mesai_channel.send(warning_message)
                 else:
-                    # Fallback to voice channel's built-in text chat
                     await after.channel.send(warning_message)
             except Exception as e:
                 logger.error(f"Failed to send entry warning message: {e}")
@@ -70,30 +112,28 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             weekly_seconds = self.bot.db.get_weekly_time(str(member.id))
             total_seconds = self.bot.db.get_total_time(str(member.id))
             
-            # Send private statistics DM
+            # Send public message with a button for ephemeral statistics
             try:
-                if duration > 5:  # Only DM if they spent more than 5 seconds
-                    formatted_session = format_duration(duration)
-                    formatted_weekly = format_duration(weekly_seconds)
-                    formatted_total = format_duration(total_seconds)
+                if duration > 5:  # Only post if they spent more than 5 seconds
+                    view = MesaiSummaryView(member.id, duration, weekly_seconds, total_seconds)
+                    mesai_channel = get_mesai_channel(member.guild)
                     
-                    embed = discord.Embed(
-                        title="🚨 SAHP Mesaiden Çıkış Yapıldı",
-                        description=f"Merhaba {member.mention}, **Aktif Mesai** ses kanalındaki oturumunuz sonlandırıldı. Mesai bilgileriniz aşağıda yer almaktadır:",
-                        color=discord.Color.red(),
-                        timestamp=discord.utils.utcnow()
-                    )
-                    embed.add_field(name="⏱️ Mesaide Kaldığın Süre", value=f"`{formatted_session}`", inline=False)
-                    embed.add_field(name="📅 Son 7 Günde Yaptığın Mesai", value=f"`{formatted_weekly}`", inline=False)
-                    embed.add_field(name="🏆 Toplam Mesai Süren", value=f"`{formatted_total}`", inline=False)
-                    embed.set_thumbnail(url=member.guild.icon.url if member.guild.icon else None)
-                    embed.set_footer(text="San Andreas Highway Patrol • Command Staff")
+                    exit_message = f"👋 {member.mention} aktif mesai ses kanalından ayrıldı. Mesai özetini sadece kendisi görecek şekilde aşağıdaki butona tıklayarak görüntüleyebilir."
                     
-                    await member.send(embed=embed)
-            except discord.Forbidden:
-                logger.warning(f"Could not send DM to {member.display_name} (DMs disabled).")
+                    if mesai_channel:
+                        await mesai_channel.send(
+                            content=exit_message, 
+                            view=view, 
+                            delete_after=1800  # Automatically delete message after 30 minutes
+                        )
+                    else:
+                        await before.channel.send(
+                            content=exit_message, 
+                            view=view, 
+                            delete_after=1800
+                        )
             except Exception as e:
-                logger.error(f"Failed to send session feedback to {member.display_name}: {e}")
+                logger.error(f"Failed to send session feedback button to channel: {e}")
 
     @app_commands.command(name="mesai", description="Toplam mesai sürenizi görüntüler.")
     async def mesai_sorgu(self, interaction: discord.Interaction):
