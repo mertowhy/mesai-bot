@@ -144,5 +144,30 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to clear active sessions in MongoDB: {e}")
 
+    def get_weekly_time(self, user_id: str) -> int:
+        try:
+            import time
+            seven_days_ago = int(time.time()) - (7 * 24 * 60 * 60)
+            pipeline = [
+                {
+                    "$match": {
+                        "user_id": user_id, 
+                        "join_time": {"$gte": seven_days_ago}, 
+                        "leave_time": {"$ne": None}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None, 
+                        "total": {"$sum": "$duration"}
+                    }
+                }
+            ]
+            result = list(self.sessions.aggregate(pipeline))
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            logger.error(f"Failed to fetch weekly time from MongoDB: {e}")
+            return 0
+
     def close(self):
         self.client.close()

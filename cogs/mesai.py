@@ -47,21 +47,48 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
         if joined:
             self.bot.db.start_session(str(member.id), member.display_name, current_time)
             logger.info(f"{member.display_name} ({member.id}) entered Aktif Mesai channel.")
+            
+            # Send entry warning message
+            try:
+                # Find a text channel named "mesai" (case-insensitive)
+                mesai_channel = discord.utils.get(member.guild.text_channels, name="mesai")
+                warning_message = f"🚨 {member.mention} **Mesaiye girdin!** Unutma, mesaide olmadığın takdirde bu ses kanalında bulunman ceza almana yol açabilir."
+                
+                if mesai_channel:
+                    await mesai_channel.send(warning_message)
+                else:
+                    # Fallback to voice channel's built-in text chat
+                    await after.channel.send(warning_message)
+            except Exception as e:
+                logger.error(f"Failed to send entry warning message: {e}")
 
         elif left:
             duration = self.bot.db.end_session(str(member.id), current_time)
             logger.info(f"{member.display_name} ({member.id}) left Aktif Mesai channel. Duration: {duration}s")
             
-            # Send a DM to the member telling them how long they spent (optional but highly engaging)
+            # Fetch weekly and all-time totals
+            weekly_seconds = self.bot.db.get_weekly_time(str(member.id))
+            total_seconds = self.bot.db.get_total_time(str(member.id))
+            
+            # Send private statistics DM
             try:
-                if duration > 10:  # Only DM if they spent more than 10 seconds to avoid spamming
-                    formatted_time = format_duration(duration)
+                if duration > 5:  # Only DM if they spent more than 5 seconds
+                    formatted_session = format_duration(duration)
+                    formatted_weekly = format_duration(weekly_seconds)
+                    formatted_total = format_duration(total_seconds)
+                    
                     embed = discord.Embed(
-                        title="Mesai Tamamlandı",
-                        description=f"SAHP Aktif Mesai ses kanalındaki oturumunuz sonlandı.\n\n**Oturum Süresi:** {formatted_time}",
-                        color=discord.Color.blue()
+                        title="🚨 SAHP Mesaiden Çıkış Yapıldı",
+                        description=f"Merhaba {member.mention}, **Aktif Mesai** ses kanalındaki oturumunuz sonlandırıldı. Mesai bilgileriniz aşağıda yer almaktadır:",
+                        color=discord.Color.red(),
+                        timestamp=discord.utils.utcnow()
                     )
-                    embed.set_footer(text="San Andreas Highway Patrol")
+                    embed.add_field(name="⏱️ Mesaide Kaldığın Süre", value=f"`{formatted_session}`", inline=False)
+                    embed.add_field(name="📅 Son 7 Günde Yaptığın Mesai", value=f"`{formatted_weekly}`", inline=False)
+                    embed.add_field(name="🏆 Toplam Mesai Süren", value=f"`{formatted_total}`", inline=False)
+                    embed.set_thumbnail(url=member.guild.icon.url if member.guild.icon else None)
+                    embed.set_footer(text="San Andreas Highway Patrol • Command Staff")
+                    
                     await member.send(embed=embed)
             except discord.Forbidden:
                 logger.warning(f"Could not send DM to {member.display_name} (DMs disabled).")
