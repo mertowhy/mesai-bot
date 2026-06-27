@@ -5,7 +5,29 @@ import os
 import sys
 import time
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from database import Database
+
+# Web server for Render health checks
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        # Suppress request logging to keep console clean
+        return
+
+def run_health_check_server():
+    port = int(os.getenv("PORT", 8080))
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        logging.getLogger("sahp_bot").info(f"Render health check server started on port {port}")
+        server.serve_forever()
+    except Exception as e:
+        logging.getLogger("sahp_bot").error(f"Failed to start health check server: {e}")
 
 # Load environment variables
 load_dotenv()
@@ -113,6 +135,8 @@ async def manual_sync(ctx):
     await ctx.send("Slash commands have been synced globally!")
 
 if __name__ == "__main__":
+    # Start health check server in a daemon thread for Render compatibility
+    threading.Thread(target=run_health_check_server, daemon=True).start()
     try:
         bot.run(DISCORD_TOKEN)
     except discord.LoginFailure:
