@@ -8,6 +8,65 @@ import datetime
 
 logger = logging.getLogger("sahp_bot")
 
+class MazeretRejectModal(discord.ui.Modal):
+    def __init__(self, message: discord.Message, view: discord.ui.View):
+        super().__init__(title="Mazeret Red Gerekçesi")
+        self.message = message
+        self.view = view
+
+        self.reason = discord.ui.TextInput(
+            label="Red Sebebi",
+            style=discord.TextStyle.long,
+            placeholder="Mazeretin reddedilme gerekçesini yazınız...",
+            required=True,
+            max_length=500
+        )
+        self.add_item(self.reason)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        embed = self.message.embeds[0]
+        embed.color = discord.Color.red()
+        
+        status_field_exists = False
+        for i, field in enumerate(embed.fields):
+            if field.name == "Durum":
+                status_field_exists = True
+                embed.set_field_at(i, name="Durum", value=f"❌ Reddedildi (Reddeden: {interaction.user.mention})", inline=False)
+                break
+        
+        if not status_field_exists:
+            embed.add_field(name="Durum", value=f"❌ Reddedildi (Reddeden: {interaction.user.mention})", inline=False)
+
+        # Add red sebebi to embed
+        embed.add_field(name="Red Sebebi", value=self.reason.value, inline=False)
+
+        # Disable buttons
+        for child in self.view.children:
+            child.disabled = True
+
+        await interaction.response.edit_message(embed=embed, view=self.view)
+        
+        # Notify the member in DMs
+        try:
+            member_id = None
+            for field in embed.fields:
+                if field.name == "Memur":
+                    clean_mention = field.value.split(" ")[0]
+                    member_id = int(clean_mention.replace("<@", "").replace(">", ""))
+                    break
+            if member_id:
+                member = interaction.guild.get_member(member_id)
+                if member:
+                    dm_embed = discord.Embed(
+                        title="Mazeret Talebi Güncellemesi",
+                        description=f"Gönderdiğiniz mazeret talebi reddedilmiştir.\n\n**Reddeden:** {interaction.user.display_name}\n**Red Sebebi:** {self.reason.value}",
+                        color=discord.Color.red()
+                    )
+                    dm_embed.set_footer(text="San Andreas Highway Patrol")
+                    await member.send(embed=dm_embed)
+        except Exception as e:
+            logger.warning(f"Could not send rejection DM: {e}")
+
 class MazeretReviewView(discord.ui.View):
     def __init__(self):
         # We set timeout=None to make this view persistent as well
@@ -117,48 +176,8 @@ class MazeretReviewView(discord.ui.View):
             await interaction.response.send_message("❌ Bu işlemi gerçekleştirmek için yetkiniz bulunmamaktadır.", ephemeral=True)
             return
 
-        embed = interaction.message.embeds[0]
-        # Change color to red and append rejection info
-        embed.color = discord.Color.red()
-        
-        # Check if status field already exists
-        status_field_exists = False
-        for i, field in enumerate(embed.fields):
-            if field.name == "Durum":
-                status_field_exists = True
-                embed.set_field_at(i, name="Durum", value=f"❌ Reddedildi (Reddeden: {interaction.user.mention})", inline=False)
-                break
-        
-        if not status_field_exists:
-            embed.add_field(name="Durum", value=f"❌ Reddedildi (Reddeden: {interaction.user.mention})", inline=False)
-
-        # Disable buttons
-        for child in self.children:
-            child.disabled = True
-
-        await interaction.response.edit_message(embed=embed, view=self)
-        
-        # Optionally, notify the member in DMs
-        try:
-            member_id = None
-            for field in embed.fields:
-                if field.name == "Memur":
-                    # Extract ID
-                    clean_mention = field.value.split(" ")[0]
-                    member_id = int(clean_mention.replace("<@", "").replace(">", ""))
-                    break
-            if member_id:
-                member = interaction.guild.get_member(member_id)
-                if member:
-                    dm_embed = discord.Embed(
-                        title="Mazeret Talebi Güncellemesi",
-                        description=f"Gönderdiğiniz mazeret talebi reddedilmiştir.\n\n**Reddeden:** {interaction.user.display_name}",
-                        color=discord.Color.red()
-                    )
-                    dm_embed.set_footer(text="San Andreas Highway Patrol")
-                    await member.send(embed=dm_embed)
-        except Exception as e:
-            logger.warning(f"Could not send rejection DM: {e}")
+        # Open the rejection reason modal
+        await interaction.response.send_modal(MazeretRejectModal(interaction.message, self))
 
 class MazeretModal(discord.ui.Modal):
     def __init__(self, bot):

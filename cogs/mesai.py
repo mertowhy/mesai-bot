@@ -1,9 +1,10 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import time
 import os
 import logging
+import datetime
 
 logger = logging.getLogger("sahp_bot")
 
@@ -101,6 +102,10 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
     def __init__(self, bot):
         self.bot = bot
         self.active_channel_id = int(os.getenv("AKTIF_MESAI_CHANNEL_ID", 0))
+        self.weekly_report_loop.start()
+
+    def cog_unload(self):
+        self.weekly_report_loop.cancel()
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -405,6 +410,93 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
         except Exception as e:
             logger.error(f"Error generating or sending CSV report: {e}")
             await interaction.followup.send(embed=embed)
+
+    TR_TZ = datetime.timezone(datetime.timedelta(hours=3))
+
+    @tasks.loop(time=datetime.time(hour=23, minute=59, tzinfo=TR_TZ))
+    async def weekly_report_loop(self):
+        now = datetime.datetime.now(self.TR_TZ)
+        if now.weekday() != 6:
+            return
+            
+        logger.info("Executing automatic weekly mesai report...")
+        totals = self.bot.db.get_all_weekly_totals()
+        if not totals:
+            logger.info("No weekly totals found for report.")
+            return
+
+        report_channel_id = int(os.getenv("HAFTALIK_RAPOR_CHANNEL_ID", 1520717176787701801))
+        
+        guild_id = os.getenv("GUILD_ID")
+        guild = self.bot.get_guild(int(guild_id)) if guild_id else None
+        if not guild and self.bot.guilds:
+            guild = self.bot.guilds[0]
+            
+        if not guild:
+            logger.error("Could not find any guild to process weekly report.")
+            return
+            
+        channel = guild.get_channel(report_channel_id)
+        if not channel:
+            try:
+                channel = await self.bot.fetch_channel(report_channel_id)
+            except Exception as e:
+                logger.error(f"Failed to fetch weekly report channel with ID {report_channel_id}: {e}")
+                
+        if channel:
+            embed = discord.Embed(
+                title="📊 SAHP Haftalık Mesai Raporu",
+                color=discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            
+            leaderboard_text = ""
+            for index, row in enumerate(totals[:15], start=1):
+                formatted_time = format_duration(row['total_duration'])
+                member = guild.get_member(int(row['user_id']))
+                mention = member.mention if member else f"@{row['username']}"
+                
+                active_mazeret = check_active_mazeret(self.bot.db, row['user_id'])
+                mazeret_badge = " 💤" if active_mazeret else ""
+                
+                medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+                medal = medals.get(index, f"`#{index}`")
+                leaderboard_text += f"{medal} {mention}{mazeret_badge} - **{formatted_time}**\n"
+            
+            embed.description = leaderboard_text
+            embed.set_footer(text="San Andreas Highway Patrol • Otomatik Haftalık Kapanış")
+            try:
+                await channel.send(embed=embed)
+            except Exception as e:
+                logger.error(f"Failed to send weekly report embed to channel: {e}")
+        else:
+            logger.error(f"Weekly report channel {report_channel_id} not found.")
+
+        try:
+            weekly_officer_role = discord.utils.get(guild.roles, name="Haftanın Memuru")
+            champion_id = int(totals[0]["user_id"]) if totals else None
+            
+            if weekly_officer_role:
+                for member in weekly_officer_role.members:
+                    if member.id != champion_id:
+                        try:
+                            await member.remove_roles(weekly_officer_role)
+                            logger.info(f"Removed 'Haftanın Memuru' role from {member.name}")
+                        except Exception as e:
+                            logger.error(f"Failed to remove 'Haftanın Memuru' role from {member.name}: {e}")
+                
+                if champion_id:
+                    champion_member = guild.get_member(champion_id)
+                    if champion_member:
+                        try:
+                            await champion_member.add_roles(weekly_officer_role)
+                            logger.info(f"Assigned 'Haftanın Memuru' role to {champion_member.name}")
+                        except Exception as e:
+                            logger.error(f"Failed to add 'Haftanın Memuru' role to {champion_member.name}: {e}")
+            else:
+                logger.warning("Role 'Haftanın Memuru' not found in guild. Role assignment skipped.")
+        except Exception as e:
+            logger.error(f"Error during role management in weekly report: {e}")
 
 async def setup(bot):
     await bot.add_cog(MesaiCog(bot))
