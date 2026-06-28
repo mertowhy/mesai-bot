@@ -225,5 +225,31 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
         embed.set_footer(text="San Andreas Highway Patrol")
         await interaction.response.send_message(embed=embed, ephemeral=False)
 
+    @app_commands.command(name="mesai-hafta", description="Son 7 günde en çok mesai yapan memurları listeler.")
+    async def mesai_hafta(self, interaction: discord.Interaction):
+        totals = self.bot.db.get_all_weekly_totals()
+        if not totals:
+            await interaction.response.send_message("❌ Son 7 günde kayıtlı mesai verisi bulunmamaktadır.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="🏆 SAHP Haftalık En Aktif Memurlar Listesi (Son 7 Gün)",
+            color=discord.Color.green()
+        )
+        
+        leaderboard_text = ""
+        for index, row in enumerate(totals[:15], start=1):
+            formatted_time = format_duration(row['total_duration'])
+            member = interaction.guild.get_member(int(row['user_id']))
+            mention = member.mention if member else f"@{row['username']}"
+            
+            medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+            medal = medals.get(index, f"`#{index}`")
+            leaderboard_text += f"{medal} {mention} - **{formatted_time}**\n"
+
+        embed.description = leaderboard_text
+        embed.set_footer(text="San Andreas Highway Patrol • Son 7 Günlük Rapor")
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+
 async def setup(bot):
     await bot.add_cog(MesaiCog(bot))

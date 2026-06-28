@@ -169,5 +169,42 @@ class Database:
             logger.error(f"Failed to fetch weekly time from MongoDB: {e}")
             return 0
 
+    def get_all_weekly_totals(self) -> list:
+        try:
+            import time
+            seven_days_ago = int(time.time()) - (7 * 24 * 60 * 60)
+            pipeline = [
+                {
+                    "$match": {
+                        "join_time": {"$gte": seven_days_ago},
+                        "leave_time": {"$ne": None}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$user_id",
+                        "username": {"$first": "$username"},
+                        "total_duration": {"$sum": "$duration"}
+                    }
+                },
+                {
+                    "$sort": {
+                        "total_duration": -1
+                    }
+                }
+            ]
+            cursor = self.sessions.aggregate(pipeline)
+            results = []
+            for doc in cursor:
+                results.append({
+                    "user_id": doc["_id"],
+                    "username": doc["username"],
+                    "total_duration": doc["total_duration"]
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Failed to fetch all weekly totals from MongoDB: {e}")
+            return []
+
     def close(self):
         self.client.close()
