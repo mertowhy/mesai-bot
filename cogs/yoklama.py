@@ -39,7 +39,7 @@ def build_yoklama_embed(guild, participants, date_str: str = None) -> discord.Em
     
     embed.add_field(
         name="📊 Toplam Katılım",
-        value=f"## {len(participants)} memur aktif.",
+        value=f"> **{len(participants)} memur aktif.**",
         inline=False
     )
     
