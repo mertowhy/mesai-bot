@@ -13,11 +13,10 @@ def build_yoklama_embed(guild, participants, date_str: str = None) -> discord.Em
         date_str = datetime.datetime.now(TR_TZ).strftime("%d.%m.%Y")
         
     embed = discord.Embed(
-        title=f"🚨 SAHP GÜNLÜK YOKLAMA — {date_str} 🚨",
+        title=f"🚨 YOKLAMA — {date_str} 🚨",
         description=(
-            "Değerli memurlarımız, telsiz kodlarımızı canlandırmaya, yolları kontrol altında tutmaya ve şehre huzur getirmeye hazır mısınız? 🚔\n\n"
-            "Bugün devriyeye çıkıp asayişi sağlayacak memurlarımız aranıyor! Her birinizin katılımı ekibimizin gücünü gösterir.\n\n"
-            "Aşağıdaki **Yoklamaya Katıl** butonunu kullanarak bugünkü rol katılımınızı bildirebilirsiniz! 💪"
+            "Bugün devriyeye çıkıp asayişi sağlayacak memurlarımıza ihtiyacımız var! Her birinizin katılımı ekibimizin gücünü gösterir.\n\n"
+            "Aşağıdaki **Yoklamaya Katıl** butonunu kullanarak bugünkü rol katılımınızı bildirebilirsiniz!"
         ),
         color=discord.Color.blue(),
         timestamp=discord.utils.utcnow()
@@ -27,7 +26,7 @@ def build_yoklama_embed(guild, participants, date_str: str = None) -> discord.Em
     if participants:
         participant_lines = []
         for idx, p in enumerate(participants, 1):
-            participant_lines.append(f"{idx}. <@{p['user_id']}> ({p['username']})")
+            participant_lines.append(f"{idx}. <@{p['user_id']}>")
         participant_text = "\n".join(participant_lines)
     else:
         participant_text = "*Henüz yoklamaya katılan olmadı. İlk katılan sen ol! 👮*"
@@ -40,7 +39,7 @@ def build_yoklama_embed(guild, participants, date_str: str = None) -> discord.Em
     
     embed.add_field(
         name="📊 Toplam Katılım",
-        value=f"`{len(participants)}` memur aktif.",
+        value=f"## {len(participants)} memur aktif.",
         inline=False
     )
     
@@ -152,7 +151,7 @@ class YoklamaCog(commands.Cog, name="Yoklama İşlemleri"):
             embed = build_yoklama_embed(guild, [], today_str)
             view = YoklamaView(self.bot)
             try:
-                msg = await channel.send(embed=embed, view=view)
+                msg = await channel.send(content="@everyone", embed=embed, view=view)
                 # Register in database to prevent double posts today
                 self.bot.db.create_yoklama(str(msg.id), today_str)
                 logger.info(f"Daily automatic yoklama message sent successfully. Msg ID: {msg.id}")
@@ -192,7 +191,7 @@ class YoklamaCog(commands.Cog, name="Yoklama İşlemleri"):
         view = YoklamaView(self.bot)
         
         try:
-            msg = await channel.send(embed=embed, view=view)
+            msg = await channel.send(content="@everyone", embed=embed, view=view)
             # Create yoklama in DB for this message
             self.bot.db.create_yoklama(str(msg.id), today_str)
             
