@@ -17,6 +17,7 @@ class Database:
         self.sessions = self.db["mesai_sessions"]
         self.totals = self.db["mesai_totals"]
         self.mazerets = self.db["mazerets"]
+        self.yoklamas = self.db["yoklamas"]
         
         self._init_db()
 
@@ -26,6 +27,8 @@ class Database:
             self.sessions.create_index([("user_id", 1), ("leave_time", 1)])
             self.totals.create_index([("user_id", 1)], unique=True)
             self.mazerets.create_index([("user_id", 1)])
+            self.yoklamas.create_index([("message_id", 1)], unique=True)
+            self.yoklamas.create_index([("date", 1)])
             logger.info("MongoDB indexes created successfully.")
         except Exception as e:
             logger.error(f"Failed to create MongoDB indexes: {e}")
@@ -297,6 +300,84 @@ class Database:
             return list(cursor)
         except Exception as e:
             logger.error(f"Failed to fetch mazerets from MongoDB: {e}")
+            return []
+
+    def create_yoklama(self, message_id: str, date_str: str) -> bool:
+        try:
+            import time
+            self.yoklamas.insert_one({
+                "message_id": message_id,
+                "date": date_str,
+                "participants": [],
+                "created_at": int(time.time())
+            })
+            logger.info(f"Yoklama created in DB for date {date_str} with message ID {message_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create yoklama in MongoDB: {e}")
+            return False
+
+    def get_yoklama_by_date(self, date_str: str) -> dict:
+        try:
+            return self.yoklamas.find_one({"date": date_str})
+        except Exception as e:
+            logger.error(f"Failed to fetch yoklama by date {date_str} from MongoDB: {e}")
+            return None
+
+    def add_yoklama_participant(self, message_id: str, user_id: str, username: str) -> list:
+        try:
+            import time
+            doc = self.yoklamas.find_one({"message_id": message_id})
+            participants = doc.get("participants", []) if doc else []
+            
+            # Check if user already exists
+            exists = False
+            for p in participants:
+                if p["user_id"] == user_id:
+                    p["username"] = username  # Update username just in case
+                    exists = True
+                    break
+            
+            if not exists:
+                participants.append({"user_id": user_id, "username": username})
+                
+            self.yoklamas.update_one(
+                {"message_id": message_id},
+                {
+                    "$set": {"participants": participants},
+                    "$setOnInsert": {"created_at": int(time.time())}
+                },
+                upsert=True
+            )
+            return participants
+        except Exception as e:
+            logger.error(f"Failed to add yoklama participant: {e}")
+            return []
+
+    def remove_yoklama_participant(self, message_id: str, user_id: str) -> list:
+        try:
+            doc = self.yoklamas.find_one({"message_id": message_id})
+            if not doc:
+                return []
+            
+            participants = doc.get("participants", [])
+            new_participants = [p for p in participants if p["user_id"] != user_id]
+            
+            self.yoklamas.update_one(
+                {"message_id": message_id},
+                {"$set": {"participants": new_participants}}
+            )
+            return new_participants
+        except Exception as e:
+            logger.error(f"Failed to remove yoklama participant: {e}")
+            return []
+
+    def get_yoklama_participants(self, message_id: str) -> list:
+        try:
+            doc = self.yoklamas.find_one({"message_id": message_id})
+            return doc.get("participants", []) if doc else []
+        except Exception as e:
+            logger.error(f"Failed to get yoklama participants: {e}")
             return []
 
     def close(self):

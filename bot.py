@@ -71,7 +71,7 @@ class SAHPBot(commands.Bot):
 
     async def setup_hook(self):
         # Load extensions
-        cogs = ["cogs.mesai", "cogs.mazeret"]
+        cogs = ["cogs.mesai", "cogs.mazeret", "cogs.yoklama"]
         for cog in cogs:
             try:
                 await self.load_extension(cog)
