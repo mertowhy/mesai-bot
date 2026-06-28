@@ -20,6 +20,48 @@ def format_duration(seconds: int) -> str:
         parts.append(f"{secs} saniye")
     return " ".join(parts)
 
+def check_active_mazeret(db, user_id: str) -> dict:
+    import datetime
+    try:
+        mazerets = db.get_active_mazerets(user_id)
+        if not mazerets:
+            return None
+            
+        now = datetime.datetime.now()
+        for m in mazerets:
+            dates_str = m.get("dates", "")
+            parts = [p.strip() for p in dates_str.split("-")]
+            if len(parts) == 2:
+                start_dt = datetime.datetime.strptime(parts[0], "%d.%m.%Y")
+                end_dt = datetime.datetime.strptime(parts[1], "%d.%m.%Y")
+                end_dt = end_dt.replace(hour=23, minute=59, second=59)
+                if start_dt <= now <= end_dt:
+                    return m
+            elif len(parts) == 1:
+                dt = datetime.datetime.strptime(parts[0], "%d.%m.%Y")
+                start_dt = dt.replace(hour=0, minute=0, second=0)
+                end_dt = dt.replace(hour=23, minute=59, second=59)
+                if start_dt <= now <= end_dt:
+                    return m
+    except Exception:
+        pass
+    return None
+
+def get_progress_bar_and_text(weekly_seconds: int) -> tuple[str, str]:
+    target_hours = int(os.getenv("HAFTALIK_HEDEF_SAAT", 10))
+    target_seconds = target_hours * 3600
+    
+    if target_seconds <= 0:
+        return "", ""
+        
+    percent = min(100, int((weekly_seconds / target_seconds) * 100))
+    bar_length = 10
+    filled_length = int(bar_length * percent / 100)
+    bar = "🟩" * filled_length + "⬜" * (bar_length - filled_length)
+    
+    progress_text = f"\n**🎯 Haftalık Hedef:** {target_hours} saat\n**📊 Haftalık Durum:** {bar} %{percent}"
+    return progress_text, f"{percent}%"
+
 class MesaiSummaryView(discord.ui.View):
     def __init__(self, target_member_id: int, session_duration: int, weekly_seconds: int, total_seconds: int):
         super().__init__(timeout=1800) # 30 minutes timeout
@@ -155,10 +197,25 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
     async def mesai_sorgu(self, interaction: discord.Interaction):
         total_seconds = self.bot.db.get_total_time(str(interaction.user.id))
         formatted_time = format_duration(total_seconds)
+        weekly_seconds = self.bot.db.get_weekly_time(str(interaction.user.id))
+        formatted_weekly = format_duration(weekly_seconds)
+        
+        progress_text, _ = get_progress_bar_and_text(weekly_seconds)
+        
+        active_mazeret = check_active_mazeret(self.bot.db, str(interaction.user.id))
+        mazeret_text = ""
+        if active_mazeret:
+            mazeret_text = f"\n\n💤 **Mazeret Durumu:** Aktif Mazeretiniz Var ({active_mazeret['dates']})\n**Gerekçe:** {active_mazeret['reason']}"
         
         embed = discord.Embed(
             title="👮 SAHP Kişisel Mesai Bilgisi",
-            description=f"Merhaba **{interaction.user.display_name}**, bugüne kadarki toplam aktif mesai süreniz:\n\n**⏱️ Toplam Süre:** {formatted_time}",
+            description=(
+                f"Merhaba **{interaction.user.display_name}**, mesai durumunuz aşağıda listelenmiştir:\n\n"
+                f"**⏱️ Toplam Süre:** {formatted_time}\n"
+                f"**📅 Bu Haftaki Süre:** {formatted_weekly}"
+                f"{progress_text}"
+                f"{mazeret_text}"
+            ),
             color=discord.Color.gold()
         )
         embed.set_thumbnail(url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
@@ -171,10 +228,25 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
     async def mesai_sorgula_admin(self, interaction: discord.Interaction, kullanici: discord.Member):
         total_seconds = self.bot.db.get_total_time(str(kullanici.id))
         formatted_time = format_duration(total_seconds)
+        weekly_seconds = self.bot.db.get_weekly_time(str(kullanici.id))
+        formatted_weekly = format_duration(weekly_seconds)
         
+        progress_text, _ = get_progress_bar_and_text(weekly_seconds)
+        
+        active_mazeret = check_active_mazeret(self.bot.db, str(kullanici.id))
+        mazeret_text = ""
+        if active_mazeret:
+            mazeret_text = f"\n\n💤 **Mazeret Durumu:** Aktif Mazereti Var ({active_mazeret['dates']})\n**Gerekçe:** {active_mazeret['reason']}"
+            
         embed = discord.Embed(
             title="📋 SAHP Memur Mesai Bilgisi",
-            description=f"**Memur:** {kullanici.mention} ({kullanici.display_name})\n\n**⏱️ Toplam Mesai Süresi:** {formatted_time}",
+            description=(
+                f"**Memur:** {kullanici.mention} ({kullanici.display_name})\n\n"
+                f"**⏱️ Toplam Mesai Süresi:** {formatted_time}\n"
+                f"**📅 Bu Haftaki Süre:** {formatted_weekly}"
+                f"{progress_text}"
+                f"{mazeret_text}"
+            ),
             color=discord.Color.dark_teal()
         )
         embed.set_thumbnail(url=kullanici.display_avatar.url if kullanici.display_avatar else None)
@@ -217,9 +289,12 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             member = interaction.guild.get_member(int(row['user_id']))
             mention = member.mention if member else f"@{row['username']}"
             
+            active_mazeret = check_active_mazeret(self.bot.db, row['user_id'])
+            mazeret_badge = " 💤" if active_mazeret else ""
+            
             medals = {1: "🥇", 2: "🥈", 3: "🥉"}
             medal = medals.get(index, f"`#{index}`")
-            leaderboard_text += f"{medal} {mention} - **{formatted_time}**\n"
+            leaderboard_text += f"{medal} {mention}{mazeret_badge} - **{formatted_time}**\n"
 
         embed.description = leaderboard_text
         embed.set_footer(text="San Andreas Highway Patrol")
@@ -243,13 +318,93 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             member = interaction.guild.get_member(int(row['user_id']))
             mention = member.mention if member else f"@{row['username']}"
             
+            active_mazeret = check_active_mazeret(self.bot.db, row['user_id'])
+            mazeret_badge = " 💤" if active_mazeret else ""
+            
             medals = {1: "🥇", 2: "🥈", 3: "🥉"}
             medal = medals.get(index, f"`#{index}`")
-            leaderboard_text += f"{medal} {mention} - **{formatted_time}**\n"
+            leaderboard_text += f"{medal} {mention}{mazeret_badge} - **{formatted_time}**\n"
 
         embed.description = leaderboard_text
         embed.set_footer(text="San Andreas Highway Patrol • Son 7 Günlük Rapor")
         await interaction.response.send_message(embed=embed, ephemeral=False)
+
+    @app_commands.command(name="mesai-rapor", description="Belirtilen iki tarih arasındaki mesai sürelerini raporlar ve CSV dosyası gönderir.")
+    @app_commands.describe(
+        baslangic="Başlangıç tarihi (GG.AA.YYYY)",
+        bitis="Bitiş tarihi (GG.AA.YYYY)"
+    )
+    @app_commands.default_permissions(manage_guild=True)
+    async def mesai_rapor(self, interaction: discord.Interaction, baslangic: str, bitis: str):
+        import datetime
+        import io
+        import csv
+        
+        await interaction.response.defer(ephemeral=False)
+        
+        try:
+            start_dt = datetime.datetime.strptime(baslangic.strip(), "%d.%m.%Y")
+            start_dt = start_dt.replace(hour=0, minute=0, second=0)
+            start_ts = int(start_dt.timestamp())
+            
+            end_dt = datetime.datetime.strptime(bitis.strip(), "%d.%m.%Y")
+            end_dt = end_dt.replace(hour=23, minute=59, second=59)
+            end_ts = int(end_dt.timestamp())
+        except ValueError:
+            await interaction.followup.send("❌ Geçersiz tarih formatı. Lütfen `GG.AA.YYYY` formatında yazın (Örn: 01.06.2026).", ephemeral=True)
+            return
+
+        totals = self.bot.db.get_range_totals(start_ts, end_ts)
+        if not totals:
+            await interaction.followup.send(f"❌ `{baslangic}` - `{bitis}` tarihleri arasında mesai kaydı bulunamadı.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"📋 SAHP Mesai Raporu ({baslangic} - {bitis})",
+            color=discord.Color.purple()
+        )
+        
+        leaderboard_text = ""
+        for index, row in enumerate(totals[:15], start=1):
+            formatted_time = format_duration(row['total_duration'])
+            member = interaction.guild.get_member(int(row['user_id']))
+            mention = member.mention if member else f"@{row['username']}"
+            
+            active_mazeret = check_active_mazeret(self.bot.db, row['user_id'])
+            mazeret_badge = " 💤" if active_mazeret else ""
+            
+            medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+            medal = medals.get(index, f"`#{index}`")
+            leaderboard_text += f"{medal} {mention}{mazeret_badge} - **{formatted_time}**\n"
+
+        embed.description = leaderboard_text
+        embed.set_footer(text="San Andreas Highway Patrol • Özel Tarih Raporu")
+        
+        try:
+            csv_buffer = io.StringIO()
+            csv_writer = csv.writer(csv_buffer)
+            csv_buffer.write('\ufeff')
+            csv_writer.writerow(["Sira", "Memur ID", "Memur Adi", "Toplam Mesai (Saniye)", "Toplam Mesai (Formatli)"])
+            
+            for index, row in enumerate(totals, start=1):
+                formatted_time = format_duration(row['total_duration'])
+                csv_writer.writerow([
+                    index,
+                    row['user_id'],
+                    row['username'],
+                    row['total_duration'],
+                    formatted_time
+                ])
+                
+            csv_buffer.seek(0)
+            file_data = discord.File(
+                fp=io.BytesIO(csv_buffer.getvalue().encode('utf-8-sig')), 
+                filename=f"mesai_rapor_{baslangic}_{bitis}.csv"
+            )
+            await interaction.followup.send(embed=embed, file=file_data)
+        except Exception as e:
+            logger.error(f"Error generating or sending CSV report: {e}")
+            await interaction.followup.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(MesaiCog(bot))

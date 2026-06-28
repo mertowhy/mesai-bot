@@ -16,6 +16,7 @@ class Database:
         
         self.sessions = self.db["mesai_sessions"]
         self.totals = self.db["mesai_totals"]
+        self.mazerets = self.db["mazerets"]
         
         self._init_db()
 
@@ -24,6 +25,7 @@ class Database:
         try:
             self.sessions.create_index([("user_id", 1), ("leave_time", 1)])
             self.totals.create_index([("user_id", 1)], unique=True)
+            self.mazerets.create_index([("user_id", 1)])
             logger.info("MongoDB indexes created successfully.")
         except Exception as e:
             logger.error(f"Failed to create MongoDB indexes: {e}")
@@ -204,6 +206,66 @@ class Database:
             return results
         except Exception as e:
             logger.error(f"Failed to fetch all weekly totals from MongoDB: {e}")
+            return []
+
+    def get_range_totals(self, start_ts: int, end_ts: int) -> list:
+        try:
+            pipeline = [
+                {
+                    "$match": {
+                        "join_time": {"$gte": start_ts, "$lte": end_ts},
+                        "leave_time": {"$ne": None}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$user_id",
+                        "username": {"$first": "$username"},
+                        "total_duration": {"$sum": "$duration"}
+                    }
+                },
+                {
+                    "$sort": {
+                        "total_duration": -1
+                    }
+                }
+            ]
+            cursor = self.sessions.aggregate(pipeline)
+            results = []
+            for doc in cursor:
+                results.append({
+                    "user_id": doc["_id"],
+                    "username": doc["username"],
+                    "total_duration": doc["total_duration"]
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Failed to fetch range totals from MongoDB: {e}")
+            return []
+
+    def add_approved_mazeret(self, user_id: str, username: str, dates: str, reason: str, approved_by: str) -> bool:
+        try:
+            import time
+            self.mazerets.insert_one({
+                "user_id": user_id,
+                "username": username,
+                "dates": dates,
+                "reason": reason,
+                "approved_by": approved_by,
+                "approved_at": int(time.time())
+            })
+            logger.info(f"Mazeret added to DB for {username} ({user_id}) by {approved_by}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add approved mazeret to MongoDB: {e}")
+            return False
+
+    def get_active_mazerets(self, user_id: str) -> list:
+        try:
+            cursor = self.mazerets.find({"user_id": user_id})
+            return list(cursor)
+        except Exception as e:
+            logger.error(f"Failed to fetch mazerets from MongoDB: {e}")
             return []
 
     def close(self):

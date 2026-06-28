@@ -3,6 +3,8 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import logging
+import re
+import datetime
 
 logger = logging.getLogger("sahp_bot")
 
@@ -47,6 +49,37 @@ class MazeretReviewView(discord.ui.View):
 
         await interaction.response.edit_message(embed=embed, view=self)
         
+        # Save approved mazeret to MongoDB
+        try:
+            member_id = None
+            username = ""
+            dates = ""
+            reason = ""
+            for field in embed.fields:
+                if field.name == "Memur":
+                    clean_mention = field.value.split(" ")[0]
+                    member_id = int(clean_mention.replace("<@", "").replace(">", ""))
+                elif field.name == "Ad Soyad / Rozet":
+                    username = field.value
+                elif field.name == "Mazeret Süresi":
+                    dates = field.value
+                elif field.name == "Mazeret Sebebi":
+                    reason = field.value
+            
+            if member_id:
+                member = interaction.guild.get_member(member_id)
+                member_display_name = member.display_name if member else username
+                db = interaction.client.db
+                db.add_approved_mazeret(
+                    str(member_id),
+                    member_display_name,
+                    dates,
+                    reason,
+                    interaction.user.display_name
+                )
+        except Exception as e:
+            logger.error(f"Error saving approved mazeret to database: {e}")
+            
         # Optionally, notify the member in DMs
         try:
             member_id = None
@@ -139,8 +172,8 @@ class MazeretModal(discord.ui.Modal):
             max_length=50
         )
         self.tarih = discord.ui.TextInput(
-            label="Mazeret Süresi (Tarihler)",
-            placeholder="Örn: 27.06.2026 - 30.06.2026",
+            label="Mazeret Süresi (Gün veya Tarih)",
+            placeholder="Örn: 2 gün veya 27.06.2026 - 30.06.2026",
             required=True,
             max_length=100
         )
@@ -167,6 +200,22 @@ class MazeretModal(discord.ui.Modal):
             )
             return
 
+        # Process the duration/day input
+        tarih_degeri = self.tarih.value.strip()
+        
+        # Check if user entered "X gün", "X gun" or just a number "X"
+        match = re.match(r'^(\d+)\s*(?:gün|gun)?$', tarih_degeri.lower())
+        if match:
+            try:
+                days = int(match.group(1))
+                now = datetime.datetime.now()
+                start_str = now.strftime("%d.%m.%Y")
+                end_dt = now + datetime.timedelta(days=days)
+                end_str = end_dt.strftime("%d.%m.%Y")
+                tarih_degeri = f"{start_str} - {end_str}"
+            except Exception:
+                pass
+
         # Prepare review embed
         embed = discord.Embed(
             title="📝 Yeni Mazeret Bildirimi",
@@ -175,7 +224,7 @@ class MazeretModal(discord.ui.Modal):
         )
         embed.add_field(name="Memur", value=f"{interaction.user.mention} ({interaction.user.id})", inline=True)
         embed.add_field(name="Ad Soyad / Rozet", value=self.isim_rozet.value, inline=True)
-        embed.add_field(name="Mazeret Süresi", value=self.tarih.value, inline=False)
+        embed.add_field(name="Mazeret Süresi", value=tarih_degeri, inline=False)
         embed.add_field(name="Mazeret Sebebi", value=self.neden.value, inline=False)
         embed.set_footer(text="San Andreas Highway Patrol Mazeret Sistemi")
         if interaction.user.display_avatar:
