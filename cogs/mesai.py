@@ -64,10 +64,11 @@ def get_progress_bar_and_text(weekly_seconds: int) -> tuple[str, str]:
     return progress_text, f"{percent}%"
 
 class MesaiSummaryView(discord.ui.View):
-    def __init__(self, target_member_id: int, session_duration: int, weekly_seconds: int, total_seconds: int):
+    def __init__(self, target_member_id: int, session_duration: int, today_seconds: int, weekly_seconds: int, total_seconds: int):
         super().__init__(timeout=1800) # 30 minutes timeout
         self.target_member_id = target_member_id
         self.session_duration = session_duration
+        self.today_seconds = today_seconds
         self.weekly_seconds = weekly_seconds
         self.total_seconds = total_seconds
 
@@ -81,18 +82,32 @@ class MesaiSummaryView(discord.ui.View):
             return
             
         formatted_session = format_duration(self.session_duration)
+        formatted_today = format_duration(self.today_seconds)
         formatted_weekly = format_duration(self.weekly_seconds)
         formatted_total = format_duration(self.total_seconds)
         
+        # Get progress bar
+        progress_text, _ = get_progress_bar_and_text(self.weekly_seconds)
+        
         embed = discord.Embed(
-            title="🚨 SAHP Mesaiden Çıkış Raporu",
-            description=f"Merhaba {interaction.user.mention}, **Aktif Mesai** ses kanalındaki oturumunuz sonlandırıldı. Mesai bilgileriniz aşağıda yer almaktadır:",
-            color=discord.Color.red(),
+            title="👮 San Andreas Highway Patrol — Mesai Raporu",
+            description=f"Merhaba {interaction.user.mention}, **Aktif Mesai** ses kanalındaki oturumunuz başarıyla sonlandırıldı.",
+            color=0x1F4E79, # Custom dark blue color
             timestamp=discord.utils.utcnow()
         )
-        embed.add_field(name="⏱️ Mesaide Kaldığın Süre", value=f"`{formatted_session}`", inline=False)
-        embed.add_field(name="📅 Son 7 Günde Yaptığın Mesai", value=f"`{formatted_weekly}`", inline=False)
-        embed.add_field(name="🏆 Toplam Mesai Süren", value=f"`{formatted_total}`", inline=False)
+        
+        embed.add_field(name="⏱️ Son Oturum Süresi", value=f"`{formatted_session}`", inline=True)
+        embed.add_field(name="📅 Bugünkü Toplam", value=f"`{formatted_today}`", inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
+        
+        embed.add_field(name="📊 Son 7 Gün", value=f"`{formatted_weekly}`", inline=True)
+        embed.add_field(name="🏆 Genel Toplam", value=f"`{formatted_total}`", inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
+        
+        if progress_text:
+            clean_progress = progress_text.strip().replace("**🎯 Haftalık Hedef:**", "🎯 **Haftalık Hedef:**").replace("**📊 Haftalık Durum:**", "📊 **Haftalık Durum:**")
+            embed.add_field(name="📈 İlerleme Durumu", value=clean_progress, inline=False)
+            
         embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
         embed.set_footer(text="San Andreas Highway Patrol • Command Staff")
         
@@ -172,13 +187,14 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             logger.info(f"{member.display_name} ({member.id}) left Aktif Mesai channel. Duration: {duration}s")
             
             # Fetch weekly and all-time totals
+            today_seconds = self.bot.db.get_today_time(str(member.id))
             weekly_seconds = self.bot.db.get_weekly_time(str(member.id))
             total_seconds = self.bot.db.get_total_time(str(member.id))
             
             # Send public message with a button for ephemeral statistics
             try:
                 if duration > 5:  # Only post if they spent more than 5 seconds
-                    view = MesaiSummaryView(member.id, duration, weekly_seconds, total_seconds)
+                    view = MesaiSummaryView(member.id, duration, today_seconds, weekly_seconds, total_seconds)
                     mesai_channel = await get_mesai_channel(member.guild)
                     
                     exit_message = f"👋 {member.mention} **mesaiden ayrıldı.** Özetini görmek için tıkla:"

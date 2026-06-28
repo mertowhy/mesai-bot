@@ -171,6 +171,37 @@ class Database:
             logger.error(f"Failed to fetch weekly time from MongoDB: {e}")
             return 0
 
+    def get_today_time(self, user_id: str) -> int:
+        try:
+            import datetime
+            import time
+            
+            # Get today's start timestamp in local time
+            now = datetime.datetime.now()
+            today_start = datetime.datetime(now.year, now.month, now.day, 0, 0, 0)
+            today_start_ts = int(today_start.timestamp())
+            
+            pipeline = [
+                {
+                    "$match": {
+                        "user_id": user_id, 
+                        "join_time": {"$gte": today_start_ts}, 
+                        "leave_time": {"$ne": None}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None, 
+                        "total": {"$sum": "$duration"}
+                    }
+                }
+            ]
+            result = list(self.sessions.aggregate(pipeline))
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            logger.error(f"Failed to fetch today time from MongoDB: {e}")
+            return 0
+
     def get_all_weekly_totals(self) -> list:
         try:
             import time
