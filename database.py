@@ -294,7 +294,8 @@ class Database:
                 "dates": dates,
                 "reason": reason,
                 "approved_by": approved_by,
-                "approved_at": int(time.time())
+                "approved_at": int(time.time()),
+                "status": "active"
             })
             logger.info(f"Mazeret added to DB for {username} ({user_id}) by {approved_by}")
             return True
@@ -309,6 +310,53 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to fetch mazerets from MongoDB: {e}")
             return []
+
+    def get_current_active_mazeret(self, user_id: str) -> dict:
+        import datetime
+        try:
+            mazerets = self.get_active_mazerets(user_id)
+            if not mazerets:
+                return None
+                
+            now = datetime.datetime.now()
+            for m in mazerets:
+                if m.get("status") == "ended":
+                    continue
+                dates_str = m.get("dates", "")
+                parts = [p.strip() for p in dates_str.split("-")]
+                if len(parts) == 2:
+                    try:
+                        start_dt = datetime.datetime.strptime(parts[0], "%d.%m.%Y")
+                        end_dt = datetime.datetime.strptime(parts[1], "%d.%m.%Y")
+                        end_dt = end_dt.replace(hour=23, minute=59, second=59)
+                        if start_dt <= now <= end_dt:
+                            return m
+                    except ValueError:
+                        continue
+                elif len(parts) == 1:
+                    try:
+                        dt = datetime.datetime.strptime(parts[0], "%d.%m.%Y")
+                        start_dt = dt.replace(hour=0, minute=0, second=0)
+                        end_dt = dt.replace(hour=23, minute=59, second=59)
+                        if start_dt <= now <= end_dt:
+                            return m
+                    except ValueError:
+                        continue
+        except Exception as e:
+            logger.error(f"Error checking active mazeret for user {user_id}: {e}")
+        return None
+
+    def end_mazeret(self, mazeret_id) -> bool:
+        try:
+            self.mazerets.update_one(
+                {"_id": mazeret_id},
+                {"$set": {"status": "ended"}}
+            )
+            logger.info(f"Mazeret {mazeret_id} status updated to ended.")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to end mazeret {mazeret_id}: {e}")
+            return False
 
     def create_yoklama(self, message_id: str, date_str: str) -> bool:
         try:

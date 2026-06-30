@@ -22,31 +22,7 @@ def format_duration(seconds: int) -> str:
     return " ".join(parts)
 
 def check_active_mazeret(db, user_id: str) -> dict:
-    import datetime
-    try:
-        mazerets = db.get_active_mazerets(user_id)
-        if not mazerets:
-            return None
-            
-        now = datetime.datetime.now()
-        for m in mazerets:
-            dates_str = m.get("dates", "")
-            parts = [p.strip() for p in dates_str.split("-")]
-            if len(parts) == 2:
-                start_dt = datetime.datetime.strptime(parts[0], "%d.%m.%Y")
-                end_dt = datetime.datetime.strptime(parts[1], "%d.%m.%Y")
-                end_dt = end_dt.replace(hour=23, minute=59, second=59)
-                if start_dt <= now <= end_dt:
-                    return m
-            elif len(parts) == 1:
-                dt = datetime.datetime.strptime(parts[0], "%d.%m.%Y")
-                start_dt = dt.replace(hour=0, minute=0, second=0)
-                end_dt = dt.replace(hour=23, minute=59, second=59)
-                if start_dt <= now <= end_dt:
-                    return m
-    except Exception:
-        pass
-    return None
+    return db.get_current_active_mazeret(user_id)
 
 def get_progress_bar_and_text(weekly_seconds: int) -> tuple[str, str]:
     target_hours = int(os.getenv("HAFTALIK_HEDEF_SAAT", 10))

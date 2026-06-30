@@ -310,6 +310,61 @@ class MazeretCog(commands.Cog, name="Mazeret İşlemleri"):
             ephemeral=True
         )
 
+    @app_commands.command(name="mazeret-bitir", description="Aktif mazeretinizi sonlandırır.")
+    @app_commands.describe(kullanici="Mazereti sonlandırılacak memur (Sadece Yetkililer)")
+    async def mazeret_bitir(self, interaction: discord.Interaction, kullanici: discord.Member = None):
+        target_member = kullanici or interaction.user
+        
+        # Permission check if target is someone else
+        if target_member != interaction.user:
+            has_permission = interaction.user.guild_permissions.administrator
+            if not has_permission:
+                for role in interaction.user.roles:
+                    if role.name == ".":
+                        has_permission = True
+                        break
+            if not has_permission:
+                await interaction.response.send_message(
+                    "❌ Başka bir memurun mazeretini sonlandırmak için yetkiniz bulunmamaktadır.", 
+                    ephemeral=True
+                )
+                return
+
+        # Check if the target member has an active mazeret
+        active_mazeret = self.bot.db.get_current_active_mazeret(str(target_member.id))
+        
+        if not active_mazeret:
+            if target_member == interaction.user:
+                await interaction.response.send_message(
+                    "❌ Aktif bir mazeretiniz bulunmamaktadır.", 
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    f"❌ {target_member.mention} adlı memurun aktif bir mazereti bulunmamaktadır.", 
+                    ephemeral=True
+                )
+            return
+
+        # End the mazeret
+        success = self.bot.db.end_mazeret(active_mazeret["_id"])
+        if success:
+            if target_member == interaction.user:
+                await interaction.response.send_message(
+                    "✅ Aktif mazeretiniz başarıyla sonlandırıldı.", 
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    f"✅ {target_member.mention} adlı memurun aktif mazereti başarıyla sonlandırıldı.", 
+                    ephemeral=True
+                )
+        else:
+            await interaction.response.send_message(
+                "❌ Mazeret sonlandırılırken veritabanı hatası oluştu.", 
+                ephemeral=True
+            )
+
 async def setup(bot):
     cog = MazeretCog(bot)
     await bot.add_cog(cog)
