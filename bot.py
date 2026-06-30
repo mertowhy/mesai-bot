@@ -13,9 +13,9 @@ from database import Database
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"OK")
+        self.wfile.write("Bot aktif ve çalışıyor!".encode("utf-8"))
     def log_message(self, format, *args):
         # Suppress request logging to keep console clean
         return
@@ -106,6 +106,7 @@ class SAHPBot(commands.Bot):
         logger.info(f"MESAI_LOG_CHANNEL_ID: {os.getenv('MESAI_LOG_CHANNEL_ID')}")
         logger.info(f"MAZERET_CHANNEL_ID: {os.getenv('MAZERET_CHANNEL_ID')}")
         logger.info(f"GELEN_MAZERET_CHANNEL_ID: {os.getenv('GELEN_MAZERET_CHANNEL_ID')}")
+        logger.info(f"HAFTANIN_MEMURU_ROLE_ID: {os.getenv('HAFTANIN_MEMURU_ROLE_ID')}")
         logger.info(f"GUILD_ID: {os.getenv('GUILD_ID')}")
         logger.info(f"LOG_LEVEL: {os.getenv('LOG_LEVEL')}")
         logger.info("-------------------------------------")

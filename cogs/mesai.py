@@ -489,7 +489,18 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             logger.error(f"Weekly report channel {report_channel_id} not found.")
 
         try:
-            weekly_officer_role = discord.utils.get(guild.roles, name="Haftanın Memuru")
+            # Try to get the role by ID first, then fallback to name
+            role_id_env = os.getenv("HAFTANIN_MEMURU_ROLE_ID", "1520716451940532274")
+            weekly_officer_role = None
+            if role_id_env:
+                try:
+                    weekly_officer_role = guild.get_role(int(role_id_env))
+                except ValueError:
+                    logger.error(f"HAFTANIN_MEMURU_ROLE_ID '{role_id_env}' is not a valid integer.")
+            
+            if not weekly_officer_role:
+                weekly_officer_role = discord.utils.get(guild.roles, name="Haftanın Memuru")
+
             champion_id = int(totals[0]["user_id"]) if totals else None
             
             if weekly_officer_role:
@@ -497,20 +508,20 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
                     if member.id != champion_id:
                         try:
                             await member.remove_roles(weekly_officer_role)
-                            logger.info(f"Removed 'Haftanın Memuru' role from {member.name}")
+                            logger.info(f"Removed '{weekly_officer_role.name}' role from {member.name}")
                         except Exception as e:
-                            logger.error(f"Failed to remove 'Haftanın Memuru' role from {member.name}: {e}")
+                            logger.error(f"Failed to remove '{weekly_officer_role.name}' role from {member.name}: {e}")
                 
                 if champion_id:
                     champion_member = guild.get_member(champion_id)
                     if champion_member:
                         try:
                             await champion_member.add_roles(weekly_officer_role)
-                            logger.info(f"Assigned 'Haftanın Memuru' role to {champion_member.name}")
+                            logger.info(f"Assigned '{weekly_officer_role.name}' role to {champion_member.name}")
                         except Exception as e:
-                            logger.error(f"Failed to add 'Haftanın Memuru' role to {champion_member.name}: {e}")
+                            logger.error(f"Failed to add '{weekly_officer_role.name}' role to {champion_member.name}: {e}")
             else:
-                logger.warning("Role 'Haftanın Memuru' not found in guild. Role assignment skipped.")
+                logger.warning(f"Role with ID '{role_id_env}' or name 'Haftanın Memuru' not found in guild. Role assignment skipped.")
         except Exception as e:
             logger.error(f"Error during role management in weekly report: {e}")
 
