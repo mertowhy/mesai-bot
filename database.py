@@ -151,13 +151,17 @@ class Database:
 
     def get_weekly_time(self, user_id: str) -> int:
         try:
-            import time
-            seven_days_ago = int(time.time()) - (7 * 24 * 60 * 60)
+            import datetime
+            now = datetime.datetime.now()
+            monday = now - datetime.timedelta(days=now.weekday())
+            monday_start = datetime.datetime(monday.year, monday.month, monday.day, 0, 0, 0)
+            monday_start_ts = int(monday_start.timestamp())
+            
             pipeline = [
                 {
                     "$match": {
                         "user_id": user_id, 
-                        "join_time": {"$gte": seven_days_ago}, 
+                        "join_time": {"$gte": monday_start_ts}, 
                         "leave_time": {"$ne": None}
                     }
                 },
@@ -207,12 +211,16 @@ class Database:
 
     def get_all_weekly_totals(self) -> list:
         try:
-            import time
-            seven_days_ago = int(time.time()) - (7 * 24 * 60 * 60)
+            import datetime
+            now = datetime.datetime.now()
+            monday = now - datetime.timedelta(days=now.weekday())
+            monday_start = datetime.datetime(monday.year, monday.month, monday.day, 0, 0, 0)
+            monday_start_ts = int(monday_start.timestamp())
+            
             pipeline = [
                 {
                     "$match": {
-                        "join_time": {"$gte": seven_days_ago},
+                        "join_time": {"$gte": monday_start_ts},
                         "leave_time": {"$ne": None}
                     }
                 },

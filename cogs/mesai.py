@@ -100,7 +100,7 @@ class MesaiSummaryView(discord.ui.View):
         embed.add_field(name="📅 Bugünkü Toplam", value=f"`{formatted_today}`", inline=True)
         embed.add_field(name="\u200b", value="\u200b", inline=True)
         
-        embed.add_field(name="📊 Son 7 Gün", value=f"`{formatted_weekly}`", inline=True)
+        embed.add_field(name="📊 Bu Hafta", value=f"`{formatted_weekly}`", inline=True)
         embed.add_field(name="🏆 Genel Toplam", value=f"`{formatted_total}`", inline=True)
         embed.add_field(name="\u200b", value="\u200b", inline=True)
         
@@ -321,15 +321,15 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
         embed.set_footer(text="San Andreas Highway Patrol")
         await interaction.response.send_message(embed=embed, ephemeral=False)
 
-    @app_commands.command(name="mesai-hafta", description="Son 7 günde en çok mesai yapan memurları listeler.")
+    @app_commands.command(name="mesai-hafta", description="Bu hafta en çok mesai yapan memurları listeler.")
     async def mesai_hafta(self, interaction: discord.Interaction):
         totals = self.bot.db.get_all_weekly_totals()
         if not totals:
-            await interaction.response.send_message("❌ Son 7 günde kayıtlı mesai verisi bulunmamaktadır.", ephemeral=True)
+            await interaction.response.send_message("❌ Bu hafta kayıtlı mesai verisi bulunmamaktadır.", ephemeral=True)
             return
 
         embed = discord.Embed(
-            title="🏆 SAHP Haftalık En Aktif Memurlar Listesi (Son 7 Gün)",
+            title="🏆 SAHP Haftalık En Aktif Memurlar Listesi (Bu Hafta)",
             color=discord.Color.green()
         )
         
@@ -347,7 +347,7 @@ class MesaiCog(commands.Cog, name="Mesai Takip"):
             leaderboard_text += f"{medal} {mention}{mazeret_badge} - **{formatted_time}**\n"
 
         embed.description = leaderboard_text
-        embed.set_footer(text="San Andreas Highway Patrol • Son 7 Günlük Rapor")
+        embed.set_footer(text="San Andreas Highway Patrol • Haftalık Rapor")
         await interaction.response.send_message(embed=embed, ephemeral=False)
 
     @app_commands.command(name="mesai-rapor", description="Belirtilen iki tarih arasındaki mesai sürelerini raporlar ve CSV dosyası gönderir.")
