@@ -16,6 +16,10 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write("Bot aktif ve çalışıyor!".encode("utf-8"))
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
     def log_message(self, format, *args):
         # Suppress request logging to keep console clean
         return
